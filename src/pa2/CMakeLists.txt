@@ -2,6 +2,8 @@ add_executable(pa2
     ${CMAKE_CURRENT_SOURCE_DIR}/pa23.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ipc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/log.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/banking.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/bank_robbery.c
 )
 
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)

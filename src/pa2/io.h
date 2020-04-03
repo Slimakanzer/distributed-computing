@@ -3,6 +3,7 @@
 #define __IO_H
 
 #include "ipc.h"
+#include "banking.h"
 #define MAX_PROCESSES 10
 
 typedef enum {
@@ -16,9 +17,14 @@ typedef enum {
 } ipc_status_t;
 
 typedef struct {
-    local_id ipc_id;
-
+    local_id ipc_id;    
+    BalanceHistory balance_history;
 } __attribute__((packed)) IpcLocal;
+
+typedef struct {
+    TransferOrder transfer_order;
+    local_id ipc_id;
+} __attribute__((packed)) Transfer;
 
 IpcLocal local;
 size_t num_processes;

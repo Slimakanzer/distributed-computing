@@ -7,6 +7,9 @@
 #include "io.h"
 #include "stdio.h"
 
+
+// #include "pa2345.h"
+/*
 static int read_exact(int fd, void* buf, int bytes)
 {
   int n = 0, rc;
@@ -26,6 +29,7 @@ static int read_exact(int fd, void* buf, int bytes)
 
   return n;
 }
+*/
 
 //------------------------------------------------------------------------------
 
@@ -45,18 +49,13 @@ int send(void * self, local_id dst, const Message * msg) {
     if (msg->s_header.s_magic != MESSAGE_MAGIC)
         return IPC_STATUS_ERROR_INVALID_MAGIC;
 
-    if (write(writer[((IpcLocal*)self)->ipc_id][dst], &msg->s_header, sizeof(MessageHeader)) == -1)
+    if (write(writer[((IpcLocal*)self)->ipc_id][dst], msg, sizeof(MessageHeader) + msg->s_header.s_payload_len) == -1)
     {
         if (errno == EPIPE)
             return IPC_STATUS_ERROR_CLOSED_PIPE;
+        else
+            return -1;
     }
-    
-    if (write(writer[((IpcLocal*)self)->ipc_id][dst], &msg->s_payload, msg->s_header.s_payload_len) == -1)
-    {
-        if (errno == EPIPE)
-            return IPC_STATUS_ERROR_CLOSED_PIPE;
-    }
-
     return IPC_STATUS_SUCCESS;
 }
 
@@ -103,16 +102,30 @@ int receive(void * self, local_id from, Message * msg) {
     if (from >= num_processes)
         return IPC_STATUS_ERROR_INVALID_PEER;
 
-    int rc = read_exact(reader[from][((IpcLocal*)self)->ipc_id], &msg->s_header, sizeof(MessageHeader));
-    if (rc != sizeof(MessageHeader))
-        return IPC_STATUS_ERROR_INVALID_READING;
-    if (msg->s_header.s_magic != MESSAGE_MAGIC)
-        return IPC_STATUS_ERROR_INVALID_MAGIC;
-
-    rc = read_exact(reader[from][((IpcLocal*)self)->ipc_id], &msg->s_payload, msg->s_header.s_payload_len);
-    if (rc != msg->s_header.s_payload_len)
-        return IPC_STATUS_ERROR_INVALID_READING;
-    return 0;
+    int nread;
+    while (1) {
+        nread = read(reader[from][((IpcLocal*)self)->ipc_id], msg, sizeof(Message));
+        switch (nread) {
+            case -1:
+                if (errno == EAGAIN) {
+                    // printf("(pipe empty)\n");
+                    sleep(1);
+                    break;
+                }
+                else {
+                    printf("read\n");
+                    return -1;
+               }
+            case 0:
+                printf("End of conversation\n");
+                return -2;            
+            default:
+                if (msg->s_header.s_magic != MESSAGE_MAGIC)
+                    return IPC_STATUS_ERROR_INVALID_MAGIC;
+                //printf("Receive: type - %u, mess_text - %s, FROM %u\n", msg->s_header.s_type, msg->s_payload, from);
+                return 0;
+        }
+    }
 }
 
 //------------------------------------------------------------------------------
@@ -128,5 +141,70 @@ int receive(void * self, local_id from, Message * msg) {
  * @return 0 on success, any non-zero value on error
  */
 int receive_any(void * self, Message * msg) {
-    return IPC_STATUS_NOT_IMPLEMENT;
+    while(1) {
+        int nread;
+        for (int from = 0; from < num_processes; from++) {
+            if (from == ((IpcLocal*)self)->ipc_id)
+                continue;
+            nread = read(reader[from][((IpcLocal*)self)->ipc_id], &msg->s_header, sizeof(MessageHeader));
+            switch (nread) {
+                case -1:
+                    if (errno == EAGAIN) {                        
+                        sleep(1);
+                        continue;
+                        break;
+                    }
+                    else {
+                        // printf("read\n");
+                        continue;
+                        break;
+                   }
+                case 0:
+                    // printf("End of conversation\n");
+                    continue;
+                    break;
+                default:
+                    if (msg->s_header.s_magic != MESSAGE_MAGIC)
+                        continue;
+                    if (msg->s_header.s_payload_len > 0){
+                        do {
+                            nread =read(reader[from][((IpcLocal*)self)->ipc_id], &msg->s_payload, msg->s_header.s_payload_len);
+                        } while (nread == -1 ||  nread == 0);
+                    }
+                    return 0;                                   
+                }
+        }
+    }
+
+
+    // if (self == NULL || ((IpcLocal*)self)->ipc_id >= num_processes)
+    //     return IPC_STATUS_ERROR_INVALID_LOCAL;
+
+    // int nread;
+    // for (int from = 0; from < num_processes; from++) {
+    //     while (1) {
+    //         nread = read(reader[from][((IpcLocal*)self)->ipc_id], &msg->s_header, sizeof(MessageHeader));
+    //         switch (nread) {
+    //             case -1:
+    //                 if (errno == EAGAIN) {                        
+    //                     sleep(1);
+    //                     break;
+    //                 }
+    //                 else {
+    //                     printf("read\n");
+    //                     break;
+    //                }
+    //             case 0:
+    //                 printf("End of conversation\n");
+    //                 break;
+    //             default:
+    //                 if (msg->s_header.s_magic != MESSAGE_MAGIC)
+    //                     break;
+    //                 printf("ANY_RECIVE - %u %u\n",  msg->s_header.s_payload_len, sizeof(&msg->s_header));
+    //                 nread = read(reader[from][((IpcLocal*)self)->ipc_id], &msg->s_payload, msg->s_header.s_payload_len);
+    //                 if (nread != -1 && nread != 0)
+    //                     return 0;
+    //         }
+    //     }
+    // }
 }
