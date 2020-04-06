@@ -1,4 +1,3 @@
-
 #include <unistd.h>
 #include <errno.h>
 #include <assert.h>
@@ -6,27 +5,7 @@
 #include "ipc.h"
 #include "io.h"
 #include "stdio.h"
-
-static int read_exact(int fd, void* buf, int bytes)
-{
-  int n = 0, rc;
-
-  assert(buf);
-  assert(bytes >= 0);
-
-  while(bytes) {
-    rc = read(fd, buf, bytes);
-    if(rc <= 0)
-        return n;
-
-    buf = (char*) buf + rc;
-    n += rc;
-    bytes -= rc;
-  }
-
-  return n;
-}
-
+#include "pa2345.h"
 //------------------------------------------------------------------------------
 
 /** Send a message to the process specified by id.
@@ -45,18 +24,13 @@ int send(void * self, local_id dst, const Message * msg) {
     if (msg->s_header.s_magic != MESSAGE_MAGIC)
         return IPC_STATUS_ERROR_INVALID_MAGIC;
 
-    if (write(writer[((IpcLocal*)self)->ipc_id][dst], &msg->s_header, sizeof(MessageHeader)) == -1)
+    if (write(writer[((IpcLocal*)self)->ipc_id][dst], msg, sizeof(MessageHeader) + msg->s_header.s_payload_len) == -1)
     {
         if (errno == EPIPE)
             return IPC_STATUS_ERROR_CLOSED_PIPE;
+        else
+            return -1;
     }
-    
-    if (write(writer[((IpcLocal*)self)->ipc_id][dst], &msg->s_payload, msg->s_header.s_payload_len) == -1)
-    {
-        if (errno == EPIPE)
-            return IPC_STATUS_ERROR_CLOSED_PIPE;
-    }
-
     return IPC_STATUS_SUCCESS;
 }
 
@@ -75,13 +49,13 @@ int send(void * self, local_id dst, const Message * msg) {
 int send_multicast(void * self, const Message * msg) {
     for (local_id dst = 0; dst < num_processes; dst++)
     {
-        if (dst != ((IpcLocal*)self)->ipc_id) {
-            ipc_status_t status = send(self, dst, msg);
-            if (status != IPC_STATUS_SUCCESS)
-                return status;
+        if (dst == ((IpcLocal*)self)->ipc_id) {
+            continue;
         }
-    }
-    
+        ipc_status_t status = send(self, dst, msg);
+        if (status != IPC_STATUS_SUCCESS)
+            return status;
+    }   
     return IPC_STATUS_SUCCESS;
 }
 
@@ -103,16 +77,19 @@ int receive(void * self, local_id from, Message * msg) {
     if (from >= num_processes)
         return IPC_STATUS_ERROR_INVALID_PEER;
 
-    int rc = read_exact(reader[from][((IpcLocal*)self)->ipc_id], &msg->s_header, sizeof(MessageHeader));
-    if (rc != sizeof(MessageHeader))
-        return IPC_STATUS_ERROR_INVALID_READING;
-    if (msg->s_header.s_magic != MESSAGE_MAGIC)
-        return IPC_STATUS_ERROR_INVALID_MAGIC;
-
-    rc = read_exact(reader[from][((IpcLocal*)self)->ipc_id], &msg->s_payload, msg->s_header.s_payload_len);
-    if (rc != msg->s_header.s_payload_len)
-        return IPC_STATUS_ERROR_INVALID_READING;
-    return 0;
+    int nread;
+    while (1) {
+        nread = read(reader[from][((IpcLocal*)self)->ipc_id], &msg->s_header, sizeof(MessageHeader));
+        if (nread == -1 || nread == 0) {
+            continue;
+        }
+            if (msg->s_header.s_payload_len > 0){
+                do {
+                    nread = read(reader[from][((IpcLocal*)self)->ipc_id], &msg->s_payload, msg->s_header.s_payload_len);
+                } while (nread == -1 || nread == 0);
+            }
+        return msg->s_header.s_type;        
+    }
 }
 
 //------------------------------------------------------------------------------
@@ -128,5 +105,87 @@ int receive(void * self, local_id from, Message * msg) {
  * @return 0 on success, any non-zero value on error
  */
 int receive_any(void * self, Message * msg) {
-    return IPC_STATUS_NOT_IMPLEMENT;
+    while(1) {
+        int nread;
+        for (int from = 0; from < num_processes; from++) {
+            if (from == ((IpcLocal*)self)->ipc_id)
+                continue;
+            nread = read(reader[from][((IpcLocal*)self)->ipc_id], &msg->s_header, sizeof(MessageHeader));
+            if (nread == -1 || nread == 0) {
+                continue;
+            }
+            if (msg->s_header.s_payload_len > 0){
+                do {
+                    nread =read(reader[from][((IpcLocal*)self)->ipc_id], &msg->s_payload, msg->s_header.s_payload_len);
+                } while (nread == -1 || nread == 0);
+            }
+            return msg->s_header.s_type;
+        }
+    }
+}
+
+int receive_from_all_children(IpcLocal* self, Message* msg, int max_count_children_proc){
+    for (int i = 1; i <= max_count_children_proc; i++) {
+        if (i == self->ipc_id){
+            continue;
+        }
+        receive(self, i, msg);
+        // printf("Receive_from_all_children to - %d; type - %d\n", self->ipc_id, msg->s_header.s_type);
+    }
+    return msg->s_header.s_type;
+}
+
+int send_started_to_all(IpcLocal* self) {
+    Message msg = {
+        .s_header =
+            {
+                .s_magic = MESSAGE_MAGIC,
+                .s_type = STARTED,
+            },
+    };
+    int payload_len = sprintf(
+        msg.s_payload, 
+        log_started_fmt, 
+        get_physical_time(), 
+        self->ipc_id, 
+        getpid(), 
+        getppid(), 
+        self->balance_history.s_history[self->balance_history.s_history_len - 1].s_balance
+    );
+    msg.s_header.s_payload_len = payload_len;
+    return send_multicast(self, &msg);
+}
+
+
+int send_done_to_all(IpcLocal* self) {
+    Message msg = {
+        .s_header =
+            {
+                .s_magic = MESSAGE_MAGIC,
+                .s_type = DONE,
+            },
+    };
+    int payload_len = sprintf(
+        msg.s_payload, 
+        log_done_fmt, 
+        get_physical_time(), 
+        self->ipc_id,
+        self->balance_history.s_history[self->balance_history.s_history_len - 1].s_balance
+    );
+    msg.s_header.s_payload_len = payload_len;
+    return send_multicast(self, &msg);
+}
+
+int send_stop_to_all(IpcLocal* self) {
+    Message msg = {
+        .s_header =
+            {
+                .s_magic = MESSAGE_MAGIC,
+                .s_type = STOP,
+                .s_payload_len = 0,
+                .s_local_time = get_physical_time(),
+            },
+    };
+    int status = send_multicast(self, &msg);
+    return status;
 }
