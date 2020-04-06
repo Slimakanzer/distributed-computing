@@ -1,4 +1,3 @@
-
 #include <unistd.h>
 #include <errno.h>
 #include <assert.h>
@@ -6,31 +5,7 @@
 #include "ipc.h"
 #include "io.h"
 #include "stdio.h"
-
-
-// #include "pa2345.h"
-/*
-static int read_exact(int fd, void* buf, int bytes)
-{
-  int n = 0, rc;
-
-  assert(buf);
-  assert(bytes >= 0);
-
-  while(bytes) {
-    rc = read(fd, buf, bytes);
-    if(rc <= 0)
-        return n;
-
-    buf = (char*) buf + rc;
-    n += rc;
-    bytes -= rc;
-  }
-
-  return n;
-}
-*/
-
+#include "pa2345.h"
 //------------------------------------------------------------------------------
 
 /** Send a message to the process specified by id.
@@ -74,13 +49,13 @@ int send(void * self, local_id dst, const Message * msg) {
 int send_multicast(void * self, const Message * msg) {
     for (local_id dst = 0; dst < num_processes; dst++)
     {
-        if (dst != ((IpcLocal*)self)->ipc_id) {
-            ipc_status_t status = send(self, dst, msg);
-            if (status != IPC_STATUS_SUCCESS)
-                return status;
+        if (dst == ((IpcLocal*)self)->ipc_id) {
+            continue;
         }
-    }
-    
+        ipc_status_t status = send(self, dst, msg);
+        if (status != IPC_STATUS_SUCCESS)
+            return status;
+    }   
     return IPC_STATUS_SUCCESS;
 }
 
@@ -104,27 +79,16 @@ int receive(void * self, local_id from, Message * msg) {
 
     int nread;
     while (1) {
-        nread = read(reader[from][((IpcLocal*)self)->ipc_id], msg, sizeof(Message));
-        switch (nread) {
-            case -1:
-                if (errno == EAGAIN) {
-                    // printf("(pipe empty)\n");
-                    sleep(1);
-                    break;
-                }
-                else {
-                    printf("read\n");
-                    return -1;
-               }
-            case 0:
-                printf("End of conversation\n");
-                return -2;            
-            default:
-                if (msg->s_header.s_magic != MESSAGE_MAGIC)
-                    return IPC_STATUS_ERROR_INVALID_MAGIC;
-                //printf("Receive: type - %u, mess_text - %s, FROM %u\n", msg->s_header.s_type, msg->s_payload, from);
-                return 0;
+        nread = read(reader[from][((IpcLocal*)self)->ipc_id], &msg->s_header, sizeof(MessageHeader));
+        if (nread == -1 || nread == 0) {
+            continue;
         }
+            if (msg->s_header.s_payload_len > 0){
+                do {
+                    nread = read(reader[from][((IpcLocal*)self)->ipc_id], &msg->s_payload, msg->s_header.s_payload_len);
+                } while (nread == -1 || nread == 0);
+            }
+        return msg->s_header.s_type;        
     }
 }
 
@@ -147,64 +111,81 @@ int receive_any(void * self, Message * msg) {
             if (from == ((IpcLocal*)self)->ipc_id)
                 continue;
             nread = read(reader[from][((IpcLocal*)self)->ipc_id], &msg->s_header, sizeof(MessageHeader));
-            switch (nread) {
-                case -1:
-                    if (errno == EAGAIN) {                        
-                        sleep(1);
-                        continue;
-                        break;
-                    }
-                    else {
-                        // printf("read\n");
-                        continue;
-                        break;
-                   }
-                case 0:
-                    // printf("End of conversation\n");
-                    continue;
-                    break;
-                default:
-                    if (msg->s_header.s_magic != MESSAGE_MAGIC)
-                        continue;
-                    if (msg->s_header.s_payload_len > 0){
-                        do {
-                            nread =read(reader[from][((IpcLocal*)self)->ipc_id], &msg->s_payload, msg->s_header.s_payload_len);
-                        } while (nread == -1 ||  nread == 0);
-                    }
-                    return 0;                                   
-                }
+            if (nread == -1 || nread == 0) {
+                continue;
+            }
+            if (msg->s_header.s_payload_len > 0){
+                do {
+                    nread =read(reader[from][((IpcLocal*)self)->ipc_id], &msg->s_payload, msg->s_header.s_payload_len);
+                } while (nread == -1 || nread == 0);
+            }
+            return msg->s_header.s_type;
         }
     }
+}
+
+int receive_from_all_children(IpcLocal* self, Message* msg, int max_count_children_proc){
+    for (int i = 1; i <= max_count_children_proc; i++) {
+        if (i == self->ipc_id){
+            continue;
+        }
+        receive(self, i, msg);
+        // printf("Receive_from_all_children to - %d; type - %d\n", self->ipc_id, msg->s_header.s_type);
+    }
+    return msg->s_header.s_type;
+}
+
+int send_started_to_all(IpcLocal* self) {
+    Message msg = {
+        .s_header =
+            {
+                .s_magic = MESSAGE_MAGIC,
+                .s_type = STARTED,
+            },
+    };
+    int payload_len = sprintf(
+        msg.s_payload, 
+        log_started_fmt, 
+        get_physical_time(), 
+        self->ipc_id, 
+        getpid(), 
+        getppid(), 
+        self->balance_history.s_history[self->balance_history.s_history_len - 1].s_balance
+    );
+    msg.s_header.s_payload_len = payload_len;
+    return send_multicast(self, &msg);
+}
 
 
-    // if (self == NULL || ((IpcLocal*)self)->ipc_id >= num_processes)
-    //     return IPC_STATUS_ERROR_INVALID_LOCAL;
+int send_done_to_all(IpcLocal* self) {
+    Message msg = {
+        .s_header =
+            {
+                .s_magic = MESSAGE_MAGIC,
+                .s_type = DONE,
+            },
+    };
+    int payload_len = sprintf(
+        msg.s_payload, 
+        log_done_fmt, 
+        get_physical_time(), 
+        self->ipc_id,
+        self->balance_history.s_history[self->balance_history.s_history_len - 1].s_balance
+    );
+    msg.s_header.s_payload_len = payload_len;
+    return send_multicast(self, &msg);
+}
 
-    // int nread;
-    // for (int from = 0; from < num_processes; from++) {
-    //     while (1) {
-    //         nread = read(reader[from][((IpcLocal*)self)->ipc_id], &msg->s_header, sizeof(MessageHeader));
-    //         switch (nread) {
-    //             case -1:
-    //                 if (errno == EAGAIN) {                        
-    //                     sleep(1);
-    //                     break;
-    //                 }
-    //                 else {
-    //                     printf("read\n");
-    //                     break;
-    //                }
-    //             case 0:
-    //                 printf("End of conversation\n");
-    //                 break;
-    //             default:
-    //                 if (msg->s_header.s_magic != MESSAGE_MAGIC)
-    //                     break;
-    //                 printf("ANY_RECIVE - %u %u\n",  msg->s_header.s_payload_len, sizeof(&msg->s_header));
-    //                 nread = read(reader[from][((IpcLocal*)self)->ipc_id], &msg->s_payload, msg->s_header.s_payload_len);
-    //                 if (nread != -1 && nread != 0)
-    //                     return 0;
-    //         }
-    //     }
-    // }
+int send_stop_to_all(IpcLocal* self) {
+    Message msg = {
+        .s_header =
+            {
+                .s_magic = MESSAGE_MAGIC,
+                .s_type = STOP,
+                .s_payload_len = 0,
+                .s_local_time = get_physical_time(),
+            },
+    };
+    int status = send_multicast(self, &msg);
+    return status;
 }

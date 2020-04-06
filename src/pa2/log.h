@@ -33,6 +33,10 @@ void started();
 
 void done();
 
+void transfer_out_fmt(local_id from, local_id to, balance_t amount);
+
+void transfer_in_fmt(local_id from, local_id to, balance_t amount);
+
 void received_all_started();
 
 void received_all_done();
@@ -40,11 +44,5 @@ void received_all_done();
 void pipe_opened(int from, int to);
 
 void log_end();
-
-// lab 2
-
-void transfer_out_fmt(local_id from, local_id to, balance_t amount);
-
-void transfer_in_fmt(local_id from, local_id to, balance_t amount);
 
 #endif  // __LOG_H
