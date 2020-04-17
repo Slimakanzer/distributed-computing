@@ -15,7 +15,7 @@ void wait_for_children(local_id);
 
 pid_t process_pids[MAX_PROCESSES+1];
 static const char * const usage =
-"This is example of my IPC library.     \
+"This is example of my IPC library.    \n\
 Usage:      -p  NUM_PROCESSES (0 .. 10)\n";
 
 int main(int argc, char const *argv[]) {

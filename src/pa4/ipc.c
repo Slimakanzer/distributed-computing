@@ -171,7 +171,7 @@ int send_started_to_all(IpcLocal* self)
         self->ipc_id,
         getpid(),
         getppid(),
-        self->balance_history.s_history[self->balance_history.s_history_len - 1].s_balance);
+        0);
     msg.s_header.s_payload_len = payload_len;
     return send_multicast(self, &msg);
 }
@@ -192,7 +192,7 @@ int send_done_to_all(IpcLocal* self)
         log_done_fmt,
         get_physical_time(),
         self->ipc_id,
-        self->balance_history.s_history[self->balance_history.s_history_len - 1].s_balance);
+        0);
     msg.s_header.s_payload_len = payload_len;
     return send_multicast(self, &msg);
 }

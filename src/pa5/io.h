@@ -19,15 +19,9 @@ typedef enum {
 
 typedef struct {
     local_id ipc_id;    
-    BalanceHistory balance_history;
     timestamp_t local_time;
     int done_received;
 } __attribute__((packed)) IpcLocal;
-
-typedef struct {
-    TransferOrder transfer_order;
-    local_id ipc_id;
-} __attribute__((packed)) Transfer;
 
 IpcLocal local;
 size_t num_processes;

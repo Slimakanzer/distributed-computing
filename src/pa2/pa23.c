@@ -24,7 +24,7 @@ pid_t process_pids[MAX_PROCESSES+1];
 balance_t start_balances[MAX_PROCESSES+1];
 
 static const char * const usage =
-"This is example of my IPC library.     \
+"This is example of my IPC library.                                          \n\
 Usage:      -p  NUM_PROCESSES (0 .. 10) and start balances for this processes\n";
 
 

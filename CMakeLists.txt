@@ -10,5 +10,6 @@ if(CLANG)
 else()
     message(FATAL_ERROR "clang not found")
 endif()
+set(CMAKE_C_COMPILER            clang)
 
 add_subdirectory(src)

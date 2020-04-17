@@ -70,30 +70,6 @@ void log_init() {
         log_errorfmt(error_open_file_fmt, pipes_log);
 }
 
-void started() {
-    pid_t pid = getpid();
-    pid_t parent_pid = getppid();
-    balance_t balance = local.balance_history.s_history[local.balance_history.s_history_len - 1].s_balance;    
-    log_events(
-        log_started_fmt, 
-        get_physical_time(),
-        local.ipc_id,
-        pid, 
-        parent_pid, 
-        balance
-    );
-}
-
-void done() {
-    balance_t balance = local.balance_history.s_history[local.balance_history.s_history_len - 1].s_balance;
-    log_events(
-        log_done_fmt,
-        get_physical_time(), 
-        local.ipc_id, 
-        balance
-    );
-}
-
 void received_all_started() {
     log_events(
         log_received_all_started_fmt, 
@@ -109,28 +85,6 @@ void received_all_done() {
         local.ipc_id
     );
 }
-
-
-void transfer_out_fmt(local_id from, local_id to, balance_t amount) {
-    log_events(
-        log_transfer_out_fmt, 
-        get_physical_time(), 
-        from, 
-        amount, 
-        to
-    );
-}
-
-void transfer_in_fmt(local_id from, local_id to, balance_t amount) {
-    log_events(
-        log_transfer_in_fmt, 
-        get_physical_time(), 
-        to, 
-        amount, 
-        from
-    );
-}
-
 
 void pipe_opened(int from, int to) {
     log_pipes("Pipe from process %1d to %1d OPENED\n", from, to);

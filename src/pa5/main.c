@@ -18,9 +18,9 @@ void wait_for_children(local_id);
 pid_t process_pids[MAX_PROCESSES + 1];
 
 static const char* const usage =
-    "This is example of my IPC library.     \
-Usage:      -p  NUM_PROCESSES (0 .. 10)     \
-            --mutexl                        \n";
+    "This is example of my IPC library.   \n\
+Usage:      -p  NUM_PROCESSES (0 .. 10)   \n\
+            --mutexl                      \n";
 
 int main(int argc, char* argv[])
 {
@@ -99,6 +99,7 @@ int main(int argc, char* argv[])
         {
             local = (IpcLocal){
                 .ipc_id = PARENT_ID,
+                .local_time = 0,
             };
             process_pids[id] = child_pid;
         }
@@ -107,14 +108,7 @@ int main(int argc, char* argv[])
             // It is child process.
             local = (IpcLocal){
                 .ipc_id = id,
-                .balance_history = (BalanceHistory){
-                    .s_id = id,
-                    .s_history_len = 1,
-                    .s_history[0] = (BalanceState){
-                        .s_balance = 0,
-                        .s_time = 0,
-                        .s_balance_pending_in = 0,
-                    }},
+                .local_time = 0,
             };
             break;
         }
@@ -125,8 +119,6 @@ int main(int argc, char* argv[])
     }
 
     close_pipes();
-
-    local.local_time = 0;
     if (local.ipc_id == PARENT_ID)
     {
         Message msg;

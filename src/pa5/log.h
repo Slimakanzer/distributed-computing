@@ -3,7 +3,6 @@
 #define __LOG_H
 
 #include <stdio.h>
-#include "banking.h"
 
 static const char * const error_open_file_fmt =
     "Error: cannot open file %s\n";
@@ -28,14 +27,6 @@ void log_events(const char *format, ...);
 void log_pipes(const char *format, ...);
 
 void log_init();
-
-void started();
-
-void done();
-
-void transfer_out_fmt(local_id from, local_id to, balance_t amount);
-
-void transfer_in_fmt(local_id from, local_id to, balance_t amount);
 
 void received_all_started();
 
